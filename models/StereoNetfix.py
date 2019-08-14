@@ -2,10 +2,10 @@
 # Python bytecode 3.6 (3379)
 # Decompiled from: Python 3.6.8 (default, Jan 14 2019, 11:02:34) 
 # [GCC 8.0.1 20180414 (experimental) [trunk revision 259383]]
-# Embedded file name: /media/lxy/sdd1/StereoNet/models/StereoNet8Xmulti.py
-# Compiled at: 2019-03-04 11:46:15
-# Size of source mod 2**32: 7796 bytes
-import torch, torch.nn as nn, torch.nn.functional as F, numpy as np, torch.backends.cudnn as cudnn
+# Embedded file name: /media/lxy/sdd1/ActiveStereoNet/StereoNet_pytorch/models/StereoNetfix.py
+# Compiled at: 2018-12-08 01:28:35
+# Size of source mod 2**32: 9409 bytes
+import torch, torch.nn as nn, torch.nn.functional as F, numpy as np
 
 def convbn(in_channel, out_channel, kernel_size, stride, pad, dilation):
     return nn.Sequential(nn.Conv2d(in_channel,
@@ -139,48 +139,63 @@ class StereoNet(nn.Module):
         disp = (self.maxdisp + 1) // pow(2, self.k)
         refimg_feature = self.feature_extraction(left)
         targetimg_feature = self.feature_extraction(right)
-        cost = torch.FloatTensor(refimg_feature.size()[0], refimg_feature.size()[1], disp, refimg_feature.size()[2], refimg_feature.size()[3]).zero_().cuda()
-        for i in range(disp):
-            if i > 0:
-                cost[:, :, i, :, i:] = refimg_feature[:, :, :, i:] - targetimg_feature[:, :, :, :-i]
-            else:
-                cost[:, :, i, :, :] = refimg_feature - targetimg_feature
 
-        cost = cost.contiguous()
-        for f in self.filter:
-            cost = f(cost)
+        def calculate(refimg_feature, targetimg_feature, imgrgb, type):
+            cost = torch.FloatTensor(refimg_feature.size()[0], refimg_feature.size()[1], disp, refimg_feature.size()[2], refimg_feature.size()[3]).zero_().cuda()
+            if type == 'left':
+                for i in range(disp):
+                    if i > 0:
+                        cost[:, :, i, :, i:] = refimg_feature[:, :, :, i:] - targetimg_feature[:, :, :, :-i]
+                    else:
+                        cost[:, :, i, :, :] = refimg_feature - targetimg_feature
 
-        cost = self.conv3d_alone(cost)
-        cost = torch.squeeze(cost, 1)
-        pred = F.softmax(cost, dim=1)
-        pred = disparityregression(disp)(pred)
-        img_pyramid_list = []
-        for i in range(self.r):
-            img_pyramid_list.append(F.interpolate(left,
-              scale_factor=(1 / pow(2, i)),
-              mode='bilinear',
-              align_corners=False))
+            if type == 'right':
+                for i in range(disp):
+                    if i > 0:
+                        cost[:, :, i, :, :-i] = refimg_feature[:, :, :, :-i] - targetimg_feature[:, :, :, i:]
+                    else:
+                        cost[:, :, i, :, :] = refimg_feature - targetimg_feature
 
-        img_pyramid_list.reverse()
-        pred_pyramid_list = [
-         pred]
-        for i in range(self.r):
-            pred_pyramid_list.append(self.edge_aware_refinements[i](pred_pyramid_list[i], img_pyramid_list[i]))
+            cost = cost.contiguous()
+            for f in self.filter:
+                cost = f(cost)
 
-        length_all = len(pred_pyramid_list)
-        for i in range(length_all):
-            pred_pyramid_list[i] = pred_pyramid_list[i] * (left.size()[(-1)] / pred_pyramid_list[i].size()[(-1)])
-            pred_pyramid_list[i] = torch.squeeze(F.interpolate(torch.unsqueeze((pred_pyramid_list[i]), dim=1),
-              size=(left.size()[-2:]),
-              mode='bilinear',
-              align_corners=False),
-              dim=1)
+            cost = self.conv3d_alone(cost)
+            cost = torch.squeeze(cost, 1)
+            pred = F.softmax(cost, dim=1)
+            pred = disparityregression(disp)(pred)
+            img_pyramid_list = []
+            for i in range(self.r):
+                img_pyramid_list.append(F.interpolate(imgrgb,
+                  scale_factor=(1 / pow(2, i + 1)),
+                  mode='bilinear',
+                  align_corners=False))
 
-        return pred_pyramid_list
+            img_pyramid_list.reverse()
+            pred_pyramid_list = [
+             pred]
+            for i in range(self.r):
+                pred_pyramid_list.append(self.edge_aware_refinements[i](pred_pyramid_list[i], img_pyramid_list[i]))
+
+            length_all = len(pred_pyramid_list)
+            for i in range(length_all):
+                pred_pyramid_list[i] = pred_pyramid_list[i] * (imgrgb.size()[(-1)] / pred_pyramid_list[i].size()[(-1)])
+                pred_pyramid_list[i] = torch.squeeze(F.interpolate(torch.unsqueeze((pred_pyramid_list[i]), dim=1),
+                  size=(imgrgb.size()[-2:]),
+                  mode='bilinear',
+                  align_corners=False),
+                  dim=1)
+
+            return pred_pyramid_list
+
+        left_pred = calculate(refimg_feature, targetimg_feature, left, 'left')
+        right_pred = calculate(targetimg_feature, refimg_feature, right, 'right')
+        return (
+         left_pred, right_pred)
 
 
 if __name__ == '__main__':
-    model = StereoNet(k=3, r=3).cuda()
+    model = StereoNet(k=4, r=4).cuda()
     import time, datetime, torch
     input = torch.FloatTensor(1, 3, 540, 960).zero_().cuda()
     for i in range(100):
@@ -188,8 +203,10 @@ if __name__ == '__main__':
 
     start = datetime.datetime.now()
     for i in range(100):
-        out = model(input, input)
+        a, b = model(input, input)
+        shape = [x.size() for x in a]
+        print(shape)
 
     end = datetime.datetime.now()
     print((end - start).total_seconds())
-# okay decompiling StereoNet8Xmulti.cpython-36.pyc
+# okay decompiling StereoNetfix.cpython-36.pyc

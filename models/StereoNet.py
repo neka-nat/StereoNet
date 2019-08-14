@@ -2,9 +2,9 @@
 # Python bytecode 3.6 (3379)
 # Decompiled from: Python 3.6.8 (default, Jan 14 2019, 11:02:34) 
 # [GCC 8.0.1 20180414 (experimental) [trunk revision 259383]]
-# Embedded file name: /media/lxy/sdd1/StereoNet/models/StereoNet8Xmulti.py
-# Compiled at: 2019-03-04 11:46:15
-# Size of source mod 2**32: 7796 bytes
+# Embedded file name: /media/lxy/sdd1/ActiveStereoNet/StereoNet_pytorch/models/StereoNet.py
+# Compiled at: 2018-12-10 15:51:27
+# Size of source mod 2**32: 13112 bytes
 import torch, torch.nn as nn, torch.nn.functional as F, numpy as np, torch.backends.cudnn as cudnn
 
 def convbn(in_channel, out_channel, kernel_size, stride, pad, dilation):
@@ -157,7 +157,7 @@ class StereoNet(nn.Module):
         img_pyramid_list = []
         for i in range(self.r):
             img_pyramid_list.append(F.interpolate(left,
-              scale_factor=(1 / pow(2, i)),
+              scale_factor=(1 / pow(2, i + 1)),
               mode='bilinear',
               align_corners=False))
 
@@ -180,7 +180,7 @@ class StereoNet(nn.Module):
 
 
 if __name__ == '__main__':
-    model = StereoNet(k=3, r=3).cuda()
+    model = StereoNet(k=4, r=4).cuda()
     import time, datetime, torch
     input = torch.FloatTensor(1, 3, 540, 960).zero_().cuda()
     for i in range(100):
@@ -192,4 +192,4 @@ if __name__ == '__main__':
 
     end = datetime.datetime.now()
     print((end - start).total_seconds())
-# okay decompiling StereoNet8Xmulti.cpython-36.pyc
+# okay decompiling StereoNet.cpython-36.pyc
